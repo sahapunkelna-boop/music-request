@@ -1,0 +1,6 @@
+{
+  "name": "Music Request System",
+  "description": "ระบบขอเพลงร้านนี้แบบเรียลไทม์ เชื่อมต่อ YouTube และมีหน้าจัดการคิวสำหรับดีเจ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
