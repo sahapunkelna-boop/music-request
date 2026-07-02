@@ -102,6 +102,11 @@ export default function App() {
   
   const playerRef = useRef<any>(null);
 
+  // DJ Modern Management States
+  const [djSearchQuery, setDjSearchQuery] = useState("");
+  const [isAutoPlayEnabled, setIsAutoPlayEnabled] = useState(true);
+  const [isTableFairSort, setIsTableFairSort] = useState(false);
+
   // 1. Initial URL Params Check & Deep-Linking Router Setup
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -144,11 +149,49 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Table-Fair queue sorting helper (Round-Robin distribution across tables)
+  const getTableFairSortedSongs = (pendingSongs: SongRequest[]) => {
+    const groups: Record<string | number, SongRequest[]> = {};
+    pendingSongs.forEach(song => {
+      const tbl = song.table;
+      if (!groups[tbl]) {
+        groups[tbl] = [];
+      }
+      groups[tbl].push(song);
+    });
+
+    Object.keys(groups).forEach(tbl => {
+      groups[tbl].sort((a, b) => (a.order || 0) - (b.order || 0));
+    });
+
+    const tableKeys = Object.keys(groups).sort((a, b) => {
+      const firstA = groups[a][0]?.order || 0;
+      const firstB = groups[b][0]?.order || 0;
+      return firstA - firstB;
+    });
+
+    const sorted: SongRequest[] = [];
+    const maxGroupLength = Math.max(...Object.values(groups).map(g => g.length), 0);
+
+    for (let round = 0; round < maxGroupLength; round++) {
+      tableKeys.forEach(tbl => {
+        if (groups[tbl][round]) {
+          sorted.push(groups[tbl][round]);
+        }
+      });
+    }
+    return sorted;
+  };
+
   // 3. Handle Auto-Playing transition of songs when nothing is playing (Only for active DJ screen)
   useEffect(() => {
-    if (currentPage === 'dj' && songQueue.length > 0) {
+    if (currentPage === 'dj' && isAutoPlayEnabled && songQueue.length > 0) {
       const hasPlayingSong = songQueue.some(item => item.status === 'playing');
-      const firstPendingSong = songQueue.find(item => item.status === 'pending');
+      const pendingSongs = songQueue.filter(item => item.status === 'pending');
+      
+      const firstPendingSong = isTableFairSort 
+        ? getTableFairSortedSongs(pendingSongs)[0]
+        : pendingSongs[0];
       
       // If there is no playing song and there is a pending song in the queue
       if (!hasPlayingSong && firstPendingSong) {
@@ -159,7 +202,7 @@ export default function App() {
         }
       }
     }
-  }, [songQueue, currentPage]);
+  }, [songQueue, currentPage, isAutoPlayEnabled, isTableFairSort]);
 
   // 4. Load YouTube Iframe API
   useEffect(() => {
@@ -314,6 +357,72 @@ export default function App() {
       updates[`/songs/${songQueue[index].id}/order`] = nextOrder;
       updates[`/songs/${songQueue[nextPendingIndex].id}/order`] = currentOrder;
       update(ref(db), updates);
+    }
+  };
+
+  // Move Pending Song to Absolute Top
+  const moveQueueToAbsoluteTop = (index: number) => {
+    const song = songQueue[index];
+    if (!song) return;
+    const pendingSongs = songQueue.filter(item => item.status === 'pending');
+    const minOrder = pendingSongs.reduce((min, s) => (s.order < min ? s.order : min), Infinity);
+    const targetOrder = minOrder === Infinity ? 0 : minOrder - 1;
+
+    const updates: Record<string, any> = {};
+    updates[`/songs/${song.id}/order`] = targetOrder;
+    update(ref(db), updates).then(() => {
+      showStatus('success', `ย้ายเพลง "${song.song.substring(0, 18)}..." ไปบนสุดแล้ว`);
+    });
+  };
+
+  // Move Pending Song to Absolute Bottom
+  const moveQueueToAbsoluteBottom = (index: number) => {
+    const song = songQueue[index];
+    if (!song) return;
+    const pendingSongs = songQueue.filter(item => item.status === 'pending');
+    const maxOrder = pendingSongs.reduce((max, s) => (s.order > max ? s.order : max), -Infinity);
+    const targetOrder = maxOrder === -Infinity ? 0 : maxOrder + 1;
+
+    const updates: Record<string, any> = {};
+    updates[`/songs/${song.id}/order`] = targetOrder;
+    update(ref(db), updates).then(() => {
+      showStatus('success', `ย้ายเพลง "${song.song.substring(0, 18)}..." ไปล่างสุดแล้ว`);
+    });
+  };
+
+  // Clear completed history songs
+  const clearCompletedHistory = () => {
+    const completedSongs = songQueue.filter(item => item.status === 'completed');
+    if (completedSongs.length === 0) {
+      showStatus('error', 'ไม่มีประวัติเพลงที่เล่นแล้วให้ล้างครับ');
+      return;
+    }
+    if (window.confirm(`ต้องการลบประวัติเพลงที่เล่นแล้วทั้งหมด (${completedSongs.length} เพลง) จริงหรือไม่?`)) {
+      const updates: Record<string, any> = {};
+      completedSongs.forEach(item => {
+        updates[`/songs/${item.id}`] = null;
+      });
+      update(ref(db), updates).then(() => {
+        showStatus('success', 'ล้างประวัติเพลงที่เล่นเสร็จแล้วทั้งหมดเรียบร้อย');
+      });
+    }
+  };
+
+  // Mark all pending songs as completed
+  const markAllPendingAsCompleted = () => {
+    const pendingSongs = songQueue.filter(item => item.status === 'pending');
+    if (pendingSongs.length === 0) {
+      showStatus('error', 'ไม่มีเพลงค้างรอเปิดครับ');
+      return;
+    }
+    if (window.confirm(`ต้องการปรับสถานะเพลงที่รอเปิดทั้งหมด (${pendingSongs.length} เพลง) ให้เป็น "เล่นแล้ว" ใช่หรือไม่?`)) {
+      const updates: Record<string, any> = {};
+      pendingSongs.forEach(item => {
+        updates[`/songs/${item.id}/status`] = 'completed';
+      });
+      update(ref(db), updates).then(() => {
+        showStatus('success', 'ปรับสถานะเพลงทั้งหมดเรียบร้อยแล้ว');
+      });
     }
   };
 
@@ -492,11 +601,44 @@ export default function App() {
   const tables = Array.from({ length: 30 }, (_, i) => i + 1);
 
   // Filter songs according to admin filters
-  const filteredAdminSongs = songQueue.filter(item => {
-    const matchesTab = item.status === currentTab;
-    const matchesTable = adminTableFilter === 'all' || String(item.table) === adminTableFilter;
-    return matchesTab && matchesTable;
-  });
+  const filteredAdminSongs = React.useMemo(() => {
+    let baseSongs = songQueue.filter(item => item.status === currentTab);
+
+    // If pending tab & Table-Fair mode is ON, sort using the fair algorithm
+    if (currentTab === 'pending' && isTableFairSort) {
+      baseSongs = getTableFairSortedSongs(baseSongs);
+    }
+
+    // Filter by table
+    if (adminTableFilter !== 'all') {
+      baseSongs = baseSongs.filter(item => String(item.table) === adminTableFilter);
+    }
+
+    // Filter by search query
+    if (djSearchQuery.trim()) {
+      const q = djSearchQuery.toLowerCase();
+      baseSongs = baseSongs.filter(item => 
+        item.song.toLowerCase().includes(q) || 
+        String(item.table).includes(q)
+      );
+    }
+
+    return baseSongs;
+  }, [songQueue, currentTab, isTableFairSort, adminTableFilter, djSearchQuery]);
+
+  // Compute active tables that have pending requests
+  const activeRequestTables = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    songQueue.filter(item => item.status === 'pending').forEach(item => {
+      counts[item.table] = (counts[item.table] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([table, count]) => ({ table, count }))
+      .sort((a, b) => b.count - a.count); // sort by count descending
+  }, [songQueue]);
+
+  // Find top requested table for statistics
+  const topRequestedTable = activeRequestTables[0] || null;
 
   // Calculate tabs counters
   const pendingCount = songQueue.filter(item => item.status === 'pending' && (adminTableFilter === 'all' || String(item.table) === adminTableFilter)).length;
@@ -992,7 +1134,218 @@ export default function App() {
 
         {/* ==================== 3. DJ / ADMIN VIEW SCREEN ==================== */}
         {currentPage === 'dj' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fadeIn">
+            
+            {/* 🌟 PREMIUM MODERN STATS & CONTROLS DASHBOARD */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              
+              {/* Stat 1: Queue Status */}
+              <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/40 flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400">
+                  <Music className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 font-medium">คิวเพลงรอเปิด</p>
+                  <p className="text-xl font-bold text-amber-400">{songQueue.filter(s => s.status === 'pending').length} เพลง</p>
+                </div>
+              </div>
+
+              {/* Stat 2: Sorting Mode */}
+              <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/40 flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${isTableFairSort ? 'bg-indigo-500/10 text-indigo-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                  <Layers className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 font-medium">รูปแบบการจัดคิว</p>
+                  <p className="text-xs font-bold text-slate-200 mt-1 truncate max-w-[150px]">
+                    {isTableFairSort ? 'เฉลี่ยรายโต๊ะ (Fair)' : 'ลำดับปกติ (First-In)'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Stat 3: Hot Table */}
+              <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/40 flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-rose-500/10 text-rose-400">
+                  <Armchair className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 font-medium">โต๊ะที่ขอเพลงมากสุด</p>
+                  <p className="text-xs font-bold text-slate-200 mt-1 truncate max-w-[150px]">
+                    {topRequestedTable ? `โต๊ะที่ ${topRequestedTable.table} (${topRequestedTable.count} เพลง)` : 'ไม่มีคิวค้าง'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Stat 4: Automation Status */}
+              <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/40 flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${isAutoPlayEnabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                  <Tv className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 font-medium">ระบบเล่นเพลงอัตโนมัติ</p>
+                  <p className="text-xs font-bold text-slate-200 mt-1">
+                    {isAutoPlayEnabled ? '🟢 เปิด (Auto-Play)' : '⚪ ควบคุมเอง'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 🛠️ ADVANCED CONTROLS PANEL */}
+            <div className="glass-panel p-5 rounded-3xl border border-slate-800 bg-slate-900/30 space-y-5">
+              
+              <div className="flex flex-col md:flex-row gap-5 items-start md:items-center justify-between pb-4 border-b border-slate-800/60">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    แผงควบคุมระบบเสียงและคิวอัจฉริยะ (DJ Admin Console)
+                  </h3>
+                  <p className="text-xs text-slate-400">ควบคุมการเล่นและจัดระเบียบตัวช่วยสลับเพลงสำหรับดีเจร้านอาหารและสถานบันเทิง</p>
+                </div>
+                
+                {/* Auto Actions Menu */}
+                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                  <button
+                    onClick={markAllPendingAsCompleted}
+                    className="text-[11px] bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-slate-950 border border-emerald-500/20 py-1.5 px-3 rounded-xl transition-all font-semibold cursor-pointer active:scale-95 flex items-center gap-1"
+                  >
+                    <Check className="w-3.5 h-3.5" /> ปรับเป็นเล่นแล้วทั้งหมด
+                  </button>
+                  <button
+                    onClick={clearCompletedHistory}
+                    className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 py-1.5 px-3 rounded-xl transition-all font-semibold cursor-pointer active:scale-95 flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-400" /> ล้างประวัติที่เปิดแล้ว
+                  </button>
+                  <button
+                    onClick={clearAllQueue}
+                    className="text-[11px] bg-rose-500/10 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/20 py-1.5 px-3 rounded-xl transition-all font-semibold cursor-pointer active:scale-95 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> ล้างคิวเพลงทั้งหมด
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                
+                {/* Toggles (Table Fair & Auto Play) */}
+                <div className="space-y-3.5 bg-slate-950/40 p-4 rounded-2xl border border-slate-800/60">
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">ตั้งค่าระบบคิว</h4>
+                  
+                  {/* Fair Sort Switch */}
+                  <div className="flex items-center justify-between gap-4 p-2 hover:bg-slate-900/50 rounded-xl transition-all">
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 block">ระบบเฉลี่ยคิวเพลงรายโต๊ะ (Table-Fair Queue)</span>
+                      <span className="text-[10px] text-slate-400">สลับคิวเพลงให้ทุกโต๊ะได้ฟังเท่าเทียมกัน (Round-Robin) ป้องกันโต๊ะเดียวจองคิวยาว</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={isTableFairSort}
+                        onChange={(e) => setIsTableFairSort(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Auto Play Switch */}
+                  <div className="flex items-center justify-between gap-4 p-2 hover:bg-slate-900/50 rounded-xl transition-all">
+                    <div>
+                      <span className="text-xs font-bold text-slate-200 block">ระบบเล่นเพลงถัดไปอัตโนมัติ (Auto-Play Next)</span>
+                      <span className="text-[10px] text-slate-400">เมื่อเล่นเพลงปัจจุบันจบ ระบบจะสตรีมเพลงถัดไปในคิวเข้าสู่ทีวีทันที</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={isAutoPlayEnabled}
+                        onChange={(e) => setIsAutoPlayEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Filters (Search & Tables) */}
+                <div className="space-y-4 bg-slate-950/40 p-4 rounded-2xl border border-slate-800/60 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">ค้นหาคิวและตัวกรอง</h4>
+                    
+                    {/* Search Queue Input */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="พิมพ์ค้นหาคิวเพลง เช่น ชื่อเพลง, เลขโต๊ะ..."
+                        value={djSearchQuery}
+                        onChange={(e) => setDjSearchQuery(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl py-2.5 pl-10 pr-4 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder-slate-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Filter by table dropdown */}
+                  <div className="pt-2">
+                    <label className="block text-[11px] text-slate-400 mb-1 font-medium">
+                      เลือกกรองแยกตามโต๊ะ (หรือพิมพ์ค้นหาได้ด้านบน):
+                    </label>
+                    <select
+                      value={adminTableFilter}
+                      onChange={(e) => setAdminTableFilter(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                    >
+                      <option value="all">แสดงคิวรวมจากทุกโต๊ะ (ทั้งหมด)</option>
+                      {tables.map(num => (
+                        <option key={num} value={num}>แสดงเฉพาะ "โต๊ะที่ {num}"</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* 📊 NEW COMPACT QUICK TABLE FILTER BADGES */}
+              {activeRequestTables.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-slate-800/40">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                    โต๊ะที่กำลังรอเพลงอยู่ (กดคลิกเพื่อกรองโต๊ะ):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1 max-w-full">
+                    <button
+                      onClick={() => setAdminTableFilter('all')}
+                      className={`text-[11px] py-1 px-3 rounded-full border transition-all cursor-pointer font-semibold ${
+                        adminTableFilter === 'all'
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 border-emerald-400 font-bold'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      ทั้งหมด (All)
+                    </button>
+                    {activeRequestTables.map(({ table, count }) => (
+                      <button
+                        key={table}
+                        onClick={() => setAdminTableFilter(String(table))}
+                        className={`text-[11px] py-1 px-3 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                          adminTableFilter === String(table)
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <span>โต๊ะ {table}</span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black ${
+                          adminTableFilter === String(table) ? 'bg-slate-950 text-amber-400' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Split layout: Video player and Queue */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
               {/* LEFT COLUMN: ACTIVE VIDEO STREAM & PLAYERS */}
@@ -1063,41 +1416,9 @@ export default function App() {
               </div>
 
               {/* RIGHT COLUMN: QUEUE TABS & LISTS */}
-              {/* RIGHT COLUMN: QUEUE TABS & LISTS */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="glass-panel border border-slate-800 p-4 rounded-3xl shadow-xl space-y-4">
                   
-                  {/* DJ Header controls */}
-                  <div className="flex justify-between items-center pb-2">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                      แผงจัดการคิวเพลงของดีเจ
-                    </span>
-                    <button
-                      onClick={clearAllQueue}
-                      className="text-[10px] bg-rose-500/10 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/20 py-1.5 px-3 rounded-lg transition-all cursor-pointer active:scale-95 font-medium"
-                    >
-                      ล้างข้อมูลคิวทั้งหมด
-                    </button>
-                  </div>
-
-                  {/* Filter by table dropdown */}
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1.5 font-medium flex items-center gap-1">
-                      <Layers className="w-3.5 h-3.5 text-amber-400" />
-                      เลือกกรองดูเพลงแยกตามโต๊ะ:
-                    </label>
-                    <select
-                      value={adminTableFilter}
-                      onChange={(e) => setAdminTableFilter(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl p-2.5 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
-                    >
-                      <option value="all">แสดงคำขอจากทุกโต๊ะ (ทั้งหมด)</option>
-                      {tables.map(num => (
-                        <option key={num} value={num}>แสดงคิวเฉพาะ "โต๊ะที่ {num}"</option>
-                      ))}
-                    </select>
-                  </div>
-
                   {/* Tabs configuration: Pending, Playing, Completed */}
                   <div className="grid grid-cols-3 bg-slate-950 p-1.5 rounded-xl border border-slate-800/60">
                     <button
@@ -1150,7 +1471,7 @@ export default function App() {
                     <div className="text-center py-16 bg-slate-900/20 rounded-3xl border border-dashed border-slate-800 flex flex-col items-center justify-center p-4">
                       <Music className="w-10 h-10 text-slate-800 mb-3" />
                       <p className="text-slate-400 text-xs font-medium">ไม่มีคิวเพลงในหมวดหมู่นี้...</p>
-                      <p className="text-slate-600 text-[10px] mt-1 font-light">ทดลองเข้าโหมดผู้ใช้เพื่อกดส่งเพลงเข้ามาดูคิว</p>
+                      <p className="text-slate-600 text-[10px] mt-1 font-light">หรือข้อมูลกรองไม่ตรงกับคำค้นหาของคุณ</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1209,22 +1530,38 @@ export default function App() {
                                 </div>
                               </div>
 
-                              {/* Drag Reordering buttons (Only on Pending & All display mode) */}
-                              {currentTab === 'pending' && adminTableFilter === 'all' && (
+                              {/* Reordering buttons (Only on Pending & All display mode) */}
+                              {currentTab === 'pending' && !isTableFairSort && (
                                 <div className="flex flex-col gap-1 shrink-0 bg-slate-950/80 p-1 rounded-md border border-slate-800/80">
                                   <button
-                                    onClick={() => moveQueueUp(trueIndex)}
-                                    className="text-[9px] bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-slate-400 p-1 rounded cursor-pointer transition-colors"
-                                    title="ย้ายขึ้น"
+                                    onClick={() => moveQueueToAbsoluteTop(trueIndex)}
+                                    className="text-[9px] bg-slate-900 hover:bg-emerald-500 hover:text-slate-950 text-slate-400 p-0.5 rounded cursor-pointer transition-colors font-bold"
+                                    title="ย้ายขึ้นบนสุด"
                                   >
-                                    <ChevronUp className="w-3 h-3" />
+                                    <ChevronUp className="w-3.5 h-3.5 mx-auto text-emerald-400" />
+                                    <span className="text-[7px] block -mt-1 leading-none">TOP</span>
+                                  </button>
+                                  <button
+                                    onClick={() => moveQueueUp(trueIndex)}
+                                    className="text-[9px] bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-slate-400 p-0.5 rounded cursor-pointer transition-colors"
+                                    title="ย้ายขึ้นทีละช่อง"
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5 mx-auto" />
                                   </button>
                                   <button
                                     onClick={() => moveQueueDown(trueIndex)}
-                                    className="text-[9px] bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-slate-400 p-1 rounded cursor-pointer transition-colors"
-                                    title="ย้ายลง"
+                                    className="text-[9px] bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-slate-400 p-0.5 rounded cursor-pointer transition-colors"
+                                    title="ย้ายลงทีละช่อง"
                                   >
-                                    <ChevronDown className="w-3 h-3" />
+                                    <ChevronDown className="w-3.5 h-3.5 mx-auto" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveQueueToAbsoluteBottom(trueIndex)}
+                                    className="text-[9px] bg-slate-900 hover:bg-rose-500 hover:text-slate-950 text-slate-400 p-0.5 rounded cursor-pointer transition-colors font-bold"
+                                    title="ย้ายลงล่างสุด"
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5 mx-auto text-rose-400" />
+                                    <span className="text-[7px] block -mt-1 leading-none">BOT</span>
                                   </button>
                                 </div>
                               )}
@@ -1259,7 +1596,7 @@ export default function App() {
                                 {item.status === 'playing' && (
                                   <>
                                     <div className="flex-1 text-[10px] md:text-xs text-rose-400 flex items-center gap-1.5 font-bold px-1 animate-pulse">
-                                      <span className="w-2 h-2 rounded-full bg-rose-500"></span> กำลังเล่น...
+                                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> กำลังเล่น...
                                     </div>
                                     <button
                                       onClick={() => moveToStatus(item.id, 'completed')}
