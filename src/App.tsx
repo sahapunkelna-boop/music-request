@@ -71,6 +71,108 @@ function extractYouTubeId(url: string): string | null {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+interface FallbackSong {
+  id: string;
+  song: string;
+  url: string;
+  category: 'acoustic' | 'pop' | 'rock' | 'lukthung' | 'party' | 'general';
+}
+
+const FALLBACK_PLAYLISTS: FallbackSong[] = [
+  // Acoustic / Cafe Chill
+  { id: 'Z-M6S4S9-m4', song: 'โต๊ะริม (Melt) - NONT TANONT', url: 'https://www.youtube.com/watch?v=Z-M6S4S9-m4', category: 'acoustic' },
+  { id: 'O81S_Xp-j_Y', song: 'พิง (ประกอบละครกระเช้าสีดา) - NONT TANONT', url: 'https://www.youtube.com/watch?v=O81S_Xp-j_Y', category: 'acoustic' },
+  { id: '_7zS9_Y-g6Y', song: 'วาฬเกยตื้น - GUNGUN', url: 'https://www.youtube.com/watch?v=_7zS9_Y-g6Y', category: 'acoustic' },
+  { id: 'S7l_gB_gAkw', song: 'ซูลูปาก้า ตาปาเฮ้ - THE TOYS', url: 'https://www.youtube.com/watch?v=S7l_gB_gAkw', category: 'acoustic' },
+  { id: '37N1L4-g_oA', song: 'ฝนตกไหม - Three Man Down', url: 'https://www.youtube.com/watch?v=37N1L4-g_oA', category: 'acoustic' },
+  { id: 'O5E_XWzWJGo', song: 'คิดแต่ไม่ถึง (Mean It) - Tilly Birds', url: 'https://www.youtube.com/watch?v=O5E_XWzWJGo', category: 'acoustic' },
+
+  // Thai Pop / String Hits
+  { id: 'a_O868_Y-l0', song: 'รักแรก (First Love) - NONT TANONT', url: 'https://www.youtube.com/watch?v=a_O868_Y-l0', category: 'pop' },
+  { id: 'qg64fN-A-Kk', song: 'เพื่อนเล่น ไม่เล่นเพื่อน (Just Being Friendly) - Tilly Birds', url: 'https://www.youtube.com/watch?v=qg64fN-A-Kk', category: 'pop' },
+  { id: 'Hw-G7L7m_50', song: 'เลือดกรุ๊ปบี (B Blood) - Chrrissa Chコツ', url: 'https://www.youtube.com/watch?v=Hw-G7L7m_50', category: 'pop' },
+  { id: 'sU-g_B-X-Yw', song: 'วัดปะหล่ะ? (TEST ME) - 4EVE', url: 'https://www.youtube.com/watch?v=sU-g_B-X-Yw', category: 'pop' },
+  { id: 'oWJ6S7S-Z3w', song: 'นะหน้าทอง - โจอี้ ภูวศิษฐ์', url: 'https://www.youtube.com/watch?v=oWJ6S7S-Z3w', category: 'pop' },
+  { id: 'X9L_gSgM-N0', song: 'ดวงเดือน - โจอี้ ภูวศิษฐ์', url: 'https://www.youtube.com/watch?v=X9L_gSgM-N0', category: 'pop' },
+
+  // Rock / Modern Indy Alternative
+  { id: '8_Lg6Gg_9m8', song: 'ทรงอย่างแบด (Bad Boy) - Paper Planes', url: 'https://www.youtube.com/watch?v=8_Lg6Gg_9m8', category: 'rock' },
+  { id: 'qS-Sg9S9-M4', song: 'แดงกับเขียว - TaitosmitH', url: 'https://www.youtube.com/watch?v=qS-Sg9S9-M4', category: 'rock' },
+  { id: 'o98S_Wg_G-0', song: 'Hello Mama - TaitosmitH', url: 'https://www.youtube.com/watch?v=o98S_Wg_G-0', category: 'rock' },
+  { id: 'O-8S_Xs-L-M', song: 'ทนได้ทุกที - COCKTAIL', url: 'https://www.youtube.com/watch?v=O-8S_Xs-L-M', category: 'rock' },
+
+  // Lukthung / Country / Isan Hits
+  { id: 'O8s_Xw-Z_9Y', song: 'คาถาขุนแผน (หลวงพ่อกวย) - กานต์ ทศน', url: 'https://www.youtube.com/watch?v=O8s_Xw-Z_9Y', category: 'lukthung' },
+  { id: 'o_8s-G-Y80A', song: 'คำว่าฮักกัน มันเหี่ยถิ่มไส - มนต์แคน แก่นคูน', url: 'https://www.youtube.com/watch?v=o_8s-G-Y80A', category: 'lukthung' },
+  { id: 'Z-9S_Wp-G-0', song: 'วอนวัยรุ่น - มนต์แคน แก่นคูน', url: 'https://www.youtube.com/watch?v=Z-9S_Wp-G-0', category: 'lukthung' },
+
+  // Party / Dance / 3-Cha
+  { id: 'o8S_S9-G_Yw', song: 'สิบสอง - จ๊ะ นงผณี', url: 'https://www.youtube.com/watch?v=o8S_S9-G_Yw', category: 'party' },
+  { id: '_w9S_S9S-m4', song: 'คอแห้ง - F.HERO x Joey Phuwasit', url: 'https://www.youtube.com/watch?v=_w9S_S9S-m4', category: 'party' },
+  { id: 'Z9S8_X9S-Y0', song: 'โดดดิด่ง (Ost. ไทบ้าน x BNK48) - BNK48', url: 'https://www.youtube.com/watch?v=Z9S8_X9S-Y0', category: 'party' },
+];
+
+function classifySongCategory(title: string): FallbackSong['category'] {
+  const t = title.toLowerCase();
+  
+  if (
+    t.includes('มนต์แคน') || t.includes('แก่นคูน') || t.includes('ลูกทุ่ง') || 
+    t.includes('หมอลำ') || t.includes('เพื่อชีวิต') || t.includes('ทศน') || 
+    t.includes('จักรพันธ์') || t.includes('อีสาน') || t.includes('กานต์') || t.includes('ไทบ้าน')
+  ) {
+    return 'lukthung';
+  }
+  
+  if (
+    t.includes('paper planes') || t.includes('ทรงอย่างแบด') || t.includes('เสแสร้ง') || 
+    t.includes('cocktail') || t.includes('taitosmith') || t.includes('ร็อค') || 
+    t.includes('rock') || t.includes('silly fools') || t.includes('โลโซ') || 
+    t.includes('loso') || t.includes('bodyslam') || t.includes('บอดี้สแลม')
+  ) {
+    return 'rock';
+  }
+
+  if (
+    t.includes('dance') || t.includes('แดนซ์') || t.includes('ปาร์ตี้') || 
+    t.includes('party') || t.includes('edm') || t.includes('จ๊ะ') || 
+    t.includes('คอแห้ง') || t.includes('ไซเรน') || t.includes('สามช่า')
+  ) {
+    return 'party';
+  }
+
+  if (
+    t.includes('acoustic') || t.includes('ชิล') || t.includes('อะคูสติก') || 
+    t.includes('คาเฟ่') || t.includes('cafe') || t.includes('nont tanont') || 
+    t.includes('นนท์ ธนนท์') || t.includes('โต๊ะริม') || t.includes('พิง') || 
+    t.includes('เบา') || t.includes('สบาย') || t.includes('lullaby') || 
+    t.includes('วาฬเกยตื้น') || t.includes('the toys') || t.includes('เดอะ ทอย')
+  ) {
+    return 'acoustic';
+  }
+
+  if (
+    t.includes('pop') || t.includes('ป็อป') || t.includes('สตริง') || 
+    t.includes('4eve') || t.includes('tilly birds') || t.includes('three man down') || 
+    t.includes('รักแรก')
+  ) {
+    return 'pop';
+  }
+
+  return 'general';
+}
+
+function getNextRecommendedSong(currentTitle: string, currentVideoId: string): FallbackSong {
+  const category = classifySongCategory(currentTitle);
+  let matchingSongs = FALLBACK_PLAYLISTS.filter(s => s.category === category && s.id !== currentVideoId);
+  
+  if (matchingSongs.length === 0) {
+    matchingSongs = FALLBACK_PLAYLISTS.filter(s => s.id !== currentVideoId);
+  }
+  
+  const randomIndex = Math.floor(Math.random() * matchingSongs.length);
+  return matchingSongs[randomIndex] || FALLBACK_PLAYLISTS[0];
+}
+
 export default function App() {
   // Page states: 'landing' | 'customer' | 'dj'
   const [currentPage, setCurrentPage] = useState<'landing' | 'customer' | 'dj'>('landing');
@@ -261,7 +363,30 @@ export default function App() {
 
   // Triggered when a song ends naturally
   const handleSongEnded = (queueId: string) => {
-    moveToStatus(queueId, 'completed');
+    if (queueId !== 'autoplay-recommendation') {
+      moveToStatus(queueId, 'completed');
+    } else {
+      const updates: Record<string, any> = {};
+      updates['/songs/autoplay-recommendation'] = null;
+      update(ref(db), updates);
+    }
+
+    // Check if there are pending songs in the queue
+    const pendingSongs = songQueue.filter(item => item.status === 'pending');
+    
+    if (pendingSongs.length > 0) {
+      // Real customer requested song exists - the standard useEffect will auto-start it when database updates
+    } else {
+      // No requested songs left! Generate a smart matching song from recommendations
+      if (isAutoPlayEnabled) {
+        const nextRec = getNextRecommendedSong(playingSongTitle, playingVideoId || '');
+        showStatus('success', `🔀 ดึงเพลงสไตล์ใกล้เคียง "${nextRec.song}" มาเล่นต่ออัตโนมัติ`);
+        
+        setTimeout(() => {
+          initAndPlayPlayer(nextRec.id, nextRec.song, 'autoplay-recommendation');
+        }, 1500);
+      }
+    }
   };
 
   // Main playback launcher (sets firebase states & starts Iframe SDK instance)
@@ -273,13 +398,28 @@ export default function App() {
     playingQueueIdRef.current = queueId;
     setIsYtPlaying(true);
 
-    // Update state to 'playing' in Firebase, set all other 'playing' songs to 'completed'
     const updates: Record<string, any> = {};
-    updates[`/songs/${queueId}/status`] = 'playing';
+    if (queueId === 'autoplay-recommendation') {
+      updates['/songs/autoplay-recommendation'] = {
+        id: 'autoplay-recommendation',
+        song: songTitle,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        table: 'แนะนำ (AutoPlay)',
+        time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+        status: 'playing',
+        order: -9999
+      };
+    } else {
+      updates[`/songs/${queueId}/status`] = 'playing';
+    }
     
     songQueue.forEach(item => {
       if (item.status === 'playing' && item.id !== queueId) {
-        updates[`/songs/${item.id}/status`] = 'completed';
+        if (item.id === 'autoplay-recommendation') {
+          updates['/songs/autoplay-recommendation'] = null;
+        } else {
+          updates[`/songs/${item.id}/status`] = 'completed';
+        }
       }
     });
     update(ref(db), updates);
@@ -461,12 +601,21 @@ export default function App() {
   // Update Firebase status helper
   const moveToStatus = (id: string, newStatus: 'pending' | 'playing' | 'completed') => {
     const updates: Record<string, any> = {};
-    updates[`/songs/${id}/status`] = newStatus;
+    
+    if (id === 'autoplay-recommendation') {
+      updates['/songs/autoplay-recommendation'] = null;
+    } else {
+      updates[`/songs/${id}/status`] = newStatus;
+    }
 
     if (newStatus === 'playing') {
       songQueue.forEach(item => {
         if (item.status === 'playing' && item.id !== id) {
-          updates[`/songs/${item.id}/status`] = 'completed';
+          if (item.id === 'autoplay-recommendation') {
+            updates['/songs/autoplay-recommendation'] = null;
+          } else {
+            updates[`/songs/${item.id}/status`] = 'completed';
+          }
         }
       });
     }
@@ -1197,6 +1346,18 @@ export default function App() {
                   ส่งคิวเพลงเข้าสู่ระบบ
                 </button>
               </form>
+
+              {/* 💡 HELPFUL STREAMING EXPLANATION */}
+              <div className="mt-5 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 text-indigo-300 text-[11px] md:text-xs flex gap-3 leading-relaxed animate-fadeIn">
+                <Info className="w-4.5 h-4.5 text-indigo-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold text-indigo-200">💡 ทำไมเพลงที่ส่งถึงไม่เล่นทันที?</p>
+                  <ul className="list-disc list-inside space-y-1 text-indigo-300/90 font-light">
+                    <li><strong>คิวเพลงตามลำดับ:</strong> หากมีเพลงอื่นกำลังเล่นอยู่ เพลงใหม่จะถูกจัดคิวรอเล่นตามลำดับ (Pending) เพื่อป้องกันการตัดเพลงหรือเสียงขาดตอนระหว่างร้อง</li>
+                    <li><strong>ดีเจยังไม่ได้เปิดสตรีม:</strong> เครื่องเล่นวิดีโอและระบบเสียง YouTube จะทำงานเมื่อมีคนเปิด <strong>"แผงดีเจควบคุมคิว" (DJ Control Panel)</strong> ทิ้งไว้บนทีวีหรือหน้าจอของร้าน หากไม่มีดีเจเปิดหน้านั้นไว้ คิวเพลงจะบันทึกรอยบนคลาวด์อย่างปลอดภัยจนกว่าหน้าดีเจจะเริ่มเล่นครับ</li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
             {/* 📋 TABLE QUEUE MONITOR */}
@@ -1668,7 +1829,13 @@ export default function App() {
                         </a>
                         <button
                           onClick={() => {
-                            if (playingQueueId) moveToStatus(playingQueueId, 'completed');
+                            if (playingQueueId) {
+                              if (playingQueueId === 'autoplay-recommendation') {
+                                handleSongEnded('autoplay-recommendation');
+                              } else {
+                                moveToStatus(playingQueueId, 'completed');
+                              }
+                            }
                           }}
                           className="flex-1 sm:flex-none text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold py-1.5 px-3 rounded-lg transition-all border border-slate-700 cursor-pointer"
                         >
