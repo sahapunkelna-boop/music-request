@@ -213,6 +213,14 @@ export default function App() {
   const [isAutoPlayEnabled, setIsAutoPlayEnabled] = useState(true);
   const [isTableFairSort, setIsTableFairSort] = useState(false);
 
+  // DJ Recommended Playlists & AutoPlay States
+  const [recommendedCategories, setRecommendedCategories] = useState<Record<string, any>>({});
+  const [activeCategoryId, setActiveCategoryId] = useState<string>("category-acoustic");
+  const [selectedCategoryForEdit, setSelectedCategoryForEdit] = useState<string>("category-acoustic");
+  const [newCategoryName, setNewCategoryName] = useState<string>("");
+  const [newSongTitle, setNewSongTitle] = useState<string>("");
+  const [newSongUrl, setNewSongUrl] = useState<string>("");
+
   // YouTube Player Playback states
   const [isYtPlaying, setIsYtPlaying] = useState(false);
   const [isYtMuted, setIsYtMuted] = useState(false);
@@ -259,6 +267,98 @@ export default function App() {
       setSongQueue(loadedSongs);
     }, (error) => {
       console.error("Firebase Database read error:", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Listen to Recommended Categories in Firebase & Seed Defaults if empty
+  useEffect(() => {
+    const categoriesRef = ref(db, 'recommended_categories');
+    const unsubscribe = onValue(categoriesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        // Seeding default categories
+        const defaults: Record<string, any> = {
+          'category-acoustic': {
+            id: 'category-acoustic',
+            name: 'เพลงอะคูสติกฟังสบายสไตล์คาเฟ่ (Acoustic Cafe)',
+            songs: {
+              'song-1': { id: 'song-1', song: 'โต๊ะริม (Melt) - NONT TANONT', url: 'https://www.youtube.com/watch?v=Z-M6S4S9-m4', videoId: 'Z-M6S4S9-m4' },
+              'song-2': { id: 'song-2', song: 'พิง (ประกอบละครกระเช้าสีดา) - NONT TANONT', url: 'https://www.youtube.com/watch?v=O81S_Xp-j_Y', videoId: 'O81S_Xp-j_Y' },
+              'song-3': { id: 'song-3', song: 'วาฬเกยตื้น - GUNGUN', url: 'https://www.youtube.com/watch?v=_7zS9_Y-g6Y', videoId: '_7zS9_Y-g6Y' },
+              'song-4': { id: 'song-4', song: 'ซูลูปาก้า ตาปาเฮ้ - THE TOYS', url: 'https://www.youtube.com/watch?v=S7l_gB_gAkw', videoId: 'S7l_gB_gAkw' },
+              'song-5': { id: 'song-5', song: 'ฝนตกไหม - Three Man Down', url: 'https://www.youtube.com/watch?v=37N1L4-g_oA', videoId: '37N1L4-g_oA' },
+              'song-6': { id: 'song-6', song: 'คิดแต่ไม่ถึง (Mean It) - Tilly Birds', url: 'https://www.youtube.com/watch?v=O5E_XWzWJGo', videoId: 'O5E_XWzWJGo' }
+            }
+          },
+          'category-pop': {
+            id: 'category-pop',
+            name: 'เพลงป็อปฮิตติดเทรนด์ (Thai Pop)',
+            songs: {
+              'song-1': { id: 'song-1', song: 'รักแรก (First Love) - NONT TANONT', url: 'https://www.youtube.com/watch?v=a_O868_Y-l0', videoId: 'a_O868_Y-l0' },
+              'song-2': { id: 'song-2', song: 'เพื่อนเล่น ไม่เล่นเพื่อน (Just Being Friendly) - Tilly Birds', url: 'https://www.youtube.com/watch?v=qg64fN-A-Kk', videoId: 'qg64fN-A-Kk' },
+              'song-3': { id: 'song-3', song: 'เลือดกรุ๊ปบี (B Blood) - Chrrissa Ch', url: 'https://www.youtube.com/watch?v=Hw-G7L7m_50', videoId: 'Hw-G7L7m_50' },
+              'song-4': { id: 'song-4', song: 'วัดปะหล่ะ? (TEST ME) - 4EVE', url: 'https://www.youtube.com/watch?v=sU-g_B-X-Yw', videoId: 'sU-g_B-X-Yw' },
+              'song-5': { id: 'song-5', song: 'นะหน้าทอง - โจอี้ ภูวศิษฐ์', url: 'https://www.youtube.com/watch?v=oWJ6S7S-Z3w', videoId: 'oWJ6S7S-Z3w' },
+              'song-6': { id: 'song-6', song: 'ดวงเดือน - โจอี้ ภูวศิษฐ์', url: 'https://www.youtube.com/watch?v=X9L_gSgM-N0', videoId: 'X9L_gSgM-N0' }
+            }
+          },
+          'category-rock': {
+            id: 'category-rock',
+            name: 'เพลงร็อคมันส์กระแทกใจ (Rock Cafe)',
+            songs: {
+              'song-1': { id: 'song-1', song: 'ทรงอย่างแบด (Bad Boy) - Paper Planes', url: 'https://www.youtube.com/watch?v=8_Lg6Gg_9m8', videoId: '8_Lg6Gg_9m8' },
+              'song-2': { id: 'song-2', song: 'แดงกับเขียว - TaitosmitH', url: 'https://www.youtube.com/watch?v=qS-Sg9S9-M4', videoId: 'qS-Sg9S9-M4' },
+              'song-3': { id: 'song-3', song: 'Hello Mama - TaitosmitH', url: 'https://www.youtube.com/watch?v=o98S_Wg_G-0', videoId: 'o98S_Wg_G-0' },
+              'song-4': { id: 'song-4', song: 'ทนได้ทุกที - COCKTAIL', url: 'https://www.youtube.com/watch?v=O-8S_Xs-L-M', videoId: 'O-8S_Xs-L-M' }
+            }
+          },
+          'category-lukthung': {
+            id: 'category-lukthung',
+            name: 'เพลงสามช่าลูกทุ่งและปาร์ตี้ (Lukthung Party)',
+            songs: {
+              'song-1': { id: 'song-1', song: 'คาถาขุนแผน (หลวงพ่อกวย) - กานต์ ทศน', url: 'https://www.youtube.com/watch?v=O8s_Xw-Z_9Y', videoId: 'O8s_Xw-Z_9Y' },
+              'song-2': { id: 'song-2', song: 'คำว่าฮักกัน มันเหี่ยถิ่มไส - มนต์แคน แก่นคูน', url: 'https://www.youtube.com/watch?v=o_8s-G-Y80A', videoId: 'o_8s-G-Y80A' },
+              'song-3': { id: 'song-3', song: 'วอนวัยรุ่น - มนต์แคน แก่นคูน', url: 'https://www.youtube.com/watch?v=Z-9S_Wp-G-0', videoId: 'Z-9S_Wp-G-0' },
+              'song-4': { id: 'song-4', song: 'สิบสอง - จ๊ะ นงผณี', url: 'https://www.youtube.com/watch?v=o8S_S9-G_Yw', videoId: 'o8S_S9-G_Yw' },
+              'song-5': { id: 'song-5', song: 'คอแห้ง - F.HERO x Joey Phuwasit', url: 'https://www.youtube.com/watch?v=_w9S_S9S-m4', videoId: '_w9S_S9S-m4' },
+              'song-6': { id: 'song-6', song: 'โดดดิด่ง (Ost. ไทบ้าน x BNK48) - BNK48', url: 'https://www.youtube.com/watch?v=Z9S8_X9S-Y0', videoId: 'Z9S8_X9S-Y0' }
+            }
+          }
+        };
+        set(categoriesRef, defaults);
+        setRecommendedCategories(defaults);
+        if (!selectedCategoryForEdit) {
+          setSelectedCategoryForEdit('category-acoustic');
+        }
+      } else {
+        setRecommendedCategories(data);
+        const keys = Object.keys(data);
+        if (keys.length > 0 && !selectedCategoryForEdit) {
+          setSelectedCategoryForEdit(keys[0]);
+        }
+      }
+    }, (error) => {
+      console.error("Firebase categories read error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [selectedCategoryForEdit]);
+
+  // Listen to Active Recommended Category ID
+  useEffect(() => {
+    const activeRef = ref(db, 'settings/active_recommended_category_id');
+    const unsubscribe = onValue(activeRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        set(activeRef, 'category-acoustic');
+        setActiveCategoryId('category-acoustic');
+      } else {
+        setActiveCategoryId(data);
+      }
+    }, (error) => {
+      console.error("Firebase active category read error:", error);
     });
 
     return () => unsubscribe();
@@ -361,6 +461,36 @@ export default function App() {
     };
   }, [playingVideoId, isYtPlaying]);
 
+  // Fetch next recommended song from the selected database active category
+  const getNextDbRecommendedSong = (currentVideoId: string) => {
+    const activeCat = recommendedCategories[activeCategoryId];
+    if (activeCat && activeCat.songs) {
+      const songsList = Object.values(activeCat.songs) as any[];
+      if (songsList.length > 0) {
+        // Filter out current video if possible to avoid playing same song twice in a row
+        let candidates = songsList.filter((s: any) => s.videoId !== currentVideoId);
+        if (candidates.length === 0) {
+          candidates = songsList;
+        }
+        const randomIndex = Math.floor(Math.random() * candidates.length);
+        const selected = candidates[randomIndex];
+        return {
+          id: selected.videoId,
+          song: selected.song,
+          url: selected.url
+        };
+      }
+    }
+
+    // Graceful fallback to the hardcoded list if empty
+    const nextRec = getNextRecommendedSong(playingSongTitle, currentVideoId);
+    return {
+      id: nextRec.id,
+      song: nextRec.song,
+      url: nextRec.url
+    };
+  };
+
   // Triggered when a song ends naturally
   const handleSongEnded = (queueId: string) => {
     if (queueId !== 'autoplay-recommendation') {
@@ -379,8 +509,9 @@ export default function App() {
     } else {
       // No requested songs left! Generate a smart matching song from recommendations
       if (isAutoPlayEnabled) {
-        const nextRec = getNextRecommendedSong(playingSongTitle, playingVideoId || '');
-        showStatus('success', `🔀 ดึงเพลงสไตล์ใกล้เคียง "${nextRec.song}" มาเล่นต่ออัตโนมัติ`);
+        const nextRec = getNextDbRecommendedSong(playingVideoId || '');
+        const activeCatName = recommendedCategories[activeCategoryId]?.name || 'หมวดหมู่แนะนำประจำร้าน';
+        showStatus('success', `🔀 ดึงเพลง "${nextRec.song}" จากเพลย์ลิสต์ "${activeCatName}" มาสลับเล่นต่ออัตโนมัติ`);
         
         setTimeout(() => {
           initAndPlayPlayer(nextRec.id, nextRec.song, 'autoplay-recommendation');
@@ -755,6 +886,104 @@ export default function App() {
         showStatus('success', 'ล้างคิวเพลงทั้งหมดสำเร็จแล้ว');
       });
     }
+  };
+
+  // DJ Recommended Playlists Helpers
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    const cleanName = newCategoryName.trim();
+    const id = 'category-' + Date.now();
+    
+    const categoryRef = ref(db, `recommended_categories/${id}`);
+    set(categoryRef, {
+      id,
+      name: cleanName
+    }).then(() => {
+      setNewCategoryName("");
+      setSelectedCategoryForEdit(id);
+      showStatus('success', `📁 สร้างหมวดหมู่ "${cleanName}" สำเร็จ!`);
+    }).catch(err => {
+      showStatus('error', `เกิดข้อผิดพลาด: ${err.message}`);
+    });
+  };
+
+  const handleDeleteCategory = (catId: string) => {
+    if (Object.keys(recommendedCategories).length <= 1) {
+      showStatus('error', '❌ ไม่สามารถลบหมวดหมู่ทั้งหมดได้ ต้องเหลืออย่างน้อย 1 หมวดหมู่');
+      return;
+    }
+    const catName = recommendedCategories[catId]?.name || 'หมวดหมู่นี้';
+    if (!window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบหมวดหมู่ "${catName}" และเพลงทั้งหมดในหมวดหมู่นี้?`)) {
+      return;
+    }
+
+    const updates: Record<string, any> = {};
+    updates[`recommended_categories/${catId}`] = null;
+    
+    // If deleted category is active, reset active to another one
+    if (activeCategoryId === catId) {
+      const remainingKeys = Object.keys(recommendedCategories).filter(k => k !== catId);
+      updates['settings/active_recommended_category_id'] = remainingKeys[0] || '';
+    }
+
+    update(ref(db), updates).then(() => {
+      showStatus('success', `🗑️ ลบหมวดหมู่ "${catName}" สำเร็จ!`);
+      const remainingKeys = Object.keys(recommendedCategories).filter(k => k !== catId);
+      setSelectedCategoryForEdit(remainingKeys[0] || '');
+    }).catch(err => {
+      showStatus('error', `เกิดข้อผิดพลาด: ${err.message}`);
+    });
+  };
+
+  const handleAddSongToCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSongTitle.trim() || !newSongUrl.trim()) {
+      showStatus('error', '⚠️ กรุณากรอกทั้งชื่อเพลงและลิงก์ YouTube');
+      return;
+    }
+
+    const videoId = extractYouTubeId(newSongUrl.trim());
+    if (!videoId) {
+      showStatus('error', '⚠️ ลิงก์ YouTube ไม่ถูกต้อง กรุณาใช้ลิงก์จาก YouTube เท่านั้น');
+      return;
+    }
+
+    const songId = 'song-' + Date.now();
+    const songRef = ref(db, `recommended_categories/${selectedCategoryForEdit}/songs/${songId}`);
+    
+    set(songRef, {
+      id: songId,
+      song: newSongTitle.trim(),
+      url: newSongUrl.trim(),
+      videoId: videoId
+    }).then(() => {
+      setNewSongTitle("");
+      setNewSongUrl("");
+      showStatus('success', `➕ เพิ่มเพลง "${newSongTitle}" ลงในเพลย์ลิสต์สำเร็จ!`);
+    }).catch(err => {
+      showStatus('error', `เกิดข้อผิดพลาด: ${err.message}`);
+    });
+  };
+
+  const handleDeleteSongFromCategory = (catId: string, songId: string) => {
+    const songName = recommendedCategories[catId]?.songs?.[songId]?.song || 'เพลงนี้';
+    const songRef = ref(db, `recommended_categories/${catId}/songs/${songId}`);
+    
+    remove(songRef).then(() => {
+      showStatus('success', `🗑️ ลบเพลง "${songName}" ออกแล้ว`);
+    }).catch(err => {
+      showStatus('error', `เกิดข้อผิดพลาด: ${err.message}`);
+    });
+  };
+
+  const handleSetActiveCategory = (catId: string) => {
+    const activeRef = ref(db, 'settings/active_recommended_category_id');
+    set(activeRef, catId).then(() => {
+      showStatus('success', `📌 ตั้งค่าเพลย์ลิสต์สลับอัตโนมัติเป็น "${recommendedCategories[catId]?.name}" สำเร็จ!`);
+    }).catch(err => {
+      showStatus('error', `เกิดข้อผิดพลาด: ${err.message}`);
+    });
   };
 
   // Search Song via YouTube v3 API
@@ -2089,6 +2318,239 @@ export default function App() {
               </div>
 
             </div>
+
+            {/* 🎵 ระบบจัดการเพลงแนะนำประจำร้าน (Shop Playlist Manager) */}
+            <div className="glass-panel p-5 md:p-6 rounded-3xl border border-slate-800 bg-slate-900/30 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-800/60 gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Music className="w-5 h-5 text-amber-400" />
+                    ระบบจัดการเพลงแนะนำประจำร้าน (Shop Playlist Manager)
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    ดีเจสามารถตั้งค่าเพลย์ลิสต์หมวดหมู่ต่างๆ เพื่อสลับเข้าเล่นคิวอัตโนมัติเมื่อคิวลูกค้าหลักว่างลง
+                  </p>
+                </div>
+                
+                {/* Active Category Display */}
+                <div className="bg-slate-950 border border-slate-800/80 px-4 py-2 rounded-2xl flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="text-[11px] text-slate-400">เพลย์ลิสต์ใช้เล่นออโต้หลัก:</span>
+                  <span className="text-xs font-bold text-emerald-400">
+                    {recommendedCategories[activeCategoryId]?.name || "ไม่มีการตั้งค่า"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* 1. คอลัมน์ซ้าย: จัดการและเลือกหมวดหมู่เพลงแนะนำ */}
+                <div className="lg:col-span-4 space-y-5">
+                  <div className="bg-slate-950/50 border border-slate-800/80 p-4 rounded-2xl space-y-4">
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-indigo-400" />
+                      เปิดใช้งาน / ตั้งค่าเพลย์ลิสต์
+                    </h4>
+                    
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {Object.keys(recommendedCategories).map((catId) => {
+                        const cat = recommendedCategories[catId];
+                        const songCount = cat.songs ? Object.keys(cat.songs).length : 0;
+                        const isActive = activeCategoryId === catId;
+                        const isEditing = selectedCategoryForEdit === catId;
+                        
+                        return (
+                          <div 
+                            key={catId}
+                            className={`p-3 rounded-xl border flex items-center justify-between transition-all gap-2 ${
+                              isActive 
+                                ? 'bg-emerald-500/10 border-emerald-500/40' 
+                                : isEditing
+                                ? 'bg-slate-900 border-slate-700'
+                                : 'bg-slate-950 border-slate-900 hover:border-slate-800'
+                            }`}
+                          >
+                            <div 
+                              className="flex-1 cursor-pointer min-w-0"
+                              onClick={() => setSelectedCategoryForEdit(catId)}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-slate-200 truncate block">
+                                  {cat.name}
+                                </span>
+                                {isActive && (
+                                  <span className="bg-emerald-500 text-slate-950 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase scale-90 shrink-0">
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono block">
+                                🎵 {songCount} เพลง
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {/* Toggle active button */}
+                              {!isActive && (
+                                <button
+                                  onClick={() => handleSetActiveCategory(catId)}
+                                  className="text-[10px] bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/20 py-1 px-2 rounded-lg transition-all font-semibold cursor-pointer"
+                                  title="ใช้สลับเล่นออโต้"
+                                >
+                                  เปิดใช้
+                                </button>
+                              )}
+                              
+                              {/* Delete Category */}
+                              <button
+                                onClick={() => handleDeleteCategory(catId)}
+                                className="p-1 text-rose-500 hover:text-white bg-rose-500/10 hover:bg-rose-600 rounded-lg transition-all cursor-pointer"
+                                title="ลบหมวดหมู่นี้"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* สร้างหมวดหมู่ใหม่ */}
+                    <form onSubmit={handleAddCategory} className="pt-3 border-t border-slate-800/60 space-y-2">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        ➕ สร้างหมวดหมู่เพลงแนะนำใหม่
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="เช่น เพลงฮิตประจำสัปดาห์, เพลงสงกรานต์..."
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                        <button
+                          type="submit"
+                          className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-xl transition-all active:scale-95 cursor-pointer shrink-0"
+                        >
+                          สร้าง
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+
+                {/* 2. คอลัมน์ขวา: จัดการรายการเพลงในหมวดหมู่ที่เลือก */}
+                <div className="lg:col-span-8 space-y-5">
+                  <div className="bg-slate-950/50 border border-slate-800/80 p-4 rounded-2xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800/60">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                          📁 จัดการหมวดหมู่: <span className="text-amber-400 font-bold">{recommendedCategories[selectedCategoryForEdit]?.name || 'กรุณาเลือกหมวดหมู่'}</span>
+                        </h4>
+                        <p className="text-[10px] text-slate-400">คุณสามารถเพิ่มหรือลบเพลงในเพลย์ลิสต์สลับเข้าคิวอัตโนมัติได้ด้านล่าง</p>
+                      </div>
+                      
+                      <div className="text-[10px] bg-slate-900 border border-slate-800 px-3 py-1 rounded-full text-slate-300 font-mono self-start sm:self-center">
+                        รวม {recommendedCategories[selectedCategoryForEdit]?.songs ? Object.keys(recommendedCategories[selectedCategoryForEdit].songs).length : 0} เพลง
+                      </div>
+                    </div>
+
+                    {/* รายการเพลง */}
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {(() => {
+                        const activeCat = recommendedCategories[selectedCategoryForEdit];
+                        const songsObj = activeCat?.songs || {};
+                        const songsArray = Object.values(songsObj) as any[];
+
+                        if (songsArray.length === 0) {
+                          return (
+                            <div className="text-center py-8 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl">
+                              <Music className="w-8 h-8 text-slate-600 mx-auto mb-2 animate-pulse" />
+                              <p className="text-xs text-slate-400 font-medium">ยังไม่มีเพลงในหมวดหมู่นี้</p>
+                              <p className="text-[10px] text-slate-500 mt-1">กรอกข้อมูลเพลงเพื่อเพิ่มเพลงแนะนำได้เลยครับ</p>
+                            </div>
+                          );
+                        }
+
+                        return songsArray.map((song: any) => (
+                          <div 
+                            key={song.id} 
+                            className="p-2 bg-slate-950/80 border border-slate-900 rounded-xl flex items-center justify-between gap-4 hover:border-slate-800 transition-colors"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <img 
+                                src={`https://img.youtube.com/vi/${song.videoId}/default.jpg`} 
+                                alt={song.song} 
+                                className="w-12 h-9 object-cover rounded-md bg-slate-900 shrink-0 border border-slate-800"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="min-w-0">
+                                <span className="text-xs font-semibold text-slate-200 block truncate max-w-[400px]">
+                                  {song.song}
+                                </span>
+                                <a 
+                                  href={song.url} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="text-[9px] text-amber-500/80 hover:text-amber-400 hover:underline inline-flex items-center gap-0.5"
+                                >
+                                  ลิงก์ YouTube <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleDeleteSongFromCategory(selectedCategoryForEdit, song.id)}
+                              className="text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 p-1.5 rounded-lg transition-all cursor-pointer shrink-0"
+                              title="ลบเพลงออก"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+
+                    {/* ฟอร์มเพิ่มเพลง */}
+                    <form onSubmit={handleAddSongToCategory} className="pt-3 border-t border-slate-800/60 space-y-3">
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        ➕ เพิ่มเพลงใหม่ลงในหมวดหมู่นี้
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                        <div className="sm:col-span-5">
+                          <input
+                            type="text"
+                            placeholder="ชื่อเพลง (เช่น รักแรก - NONT TANONT)"
+                            value={newSongTitle}
+                            onChange={(e) => setNewSongTitle(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div className="sm:col-span-5">
+                          <input
+                            type="text"
+                            placeholder="ลิงก์ YouTube (เช่น https://www.youtube.com/watch?v=...)"
+                            value={newSongUrl}
+                            onChange={(e) => setNewSongUrl(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <button
+                            type="submit"
+                            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs p-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+                          >
+                            เพิ่มเพลง
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
           </div>
         )}
 
