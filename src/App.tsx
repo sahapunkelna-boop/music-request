@@ -25,6 +25,10 @@ import {
   Lock, 
   RotateCcw, 
   Volume2, 
+  VolumeX,
+  Pause,
+  SkipForward,
+  SkipBack,
   Tv, 
   X, 
   Layers, 
@@ -106,6 +110,15 @@ export default function App() {
   const [djSearchQuery, setDjSearchQuery] = useState("");
   const [isAutoPlayEnabled, setIsAutoPlayEnabled] = useState(true);
   const [isTableFairSort, setIsTableFairSort] = useState(false);
+
+  // YouTube Player Playback states
+  const [isYtPlaying, setIsYtPlaying] = useState(false);
+  const [isYtMuted, setIsYtMuted] = useState(false);
+  const [ytVolume, setYtVolume] = useState(100);
+  const [ytCurrentTime, setYtCurrentTime] = useState(0);
+  const [ytDuration, setYtDuration] = useState(0);
+
+  const playingQueueIdRef = useRef<string | null>(null);
 
   // 1. Initial URL Params Check & Deep-Linking Router Setup
   useEffect(() => {
@@ -219,6 +232,33 @@ export default function App() {
     };
   }, []);
 
+  // Periodically query player for current time & duration
+  useEffect(() => {
+    let interval: any;
+    if (playingVideoId && playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+      interval = setInterval(() => {
+        try {
+          const currentTime = playerRef.current.getCurrentTime();
+          const duration = playerRef.current.getDuration();
+          if (typeof currentTime === 'number') {
+            setYtCurrentTime(currentTime);
+          }
+          if (typeof duration === 'number' && duration > 0) {
+            setYtDuration(duration);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }, 500);
+    } else {
+      setYtCurrentTime(0);
+      setYtDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [playingVideoId, isYtPlaying]);
+
   // Triggered when a song ends naturally
   const handleSongEnded = (queueId: string) => {
     moveToStatus(queueId, 'completed');
@@ -230,6 +270,8 @@ export default function App() {
     setPlayingVideoId(videoId);
     setPlayingSongTitle(songTitle);
     setPlayingQueueId(queueId);
+    playingQueueIdRef.current = queueId;
+    setIsYtPlaying(true);
 
     // Update state to 'playing' in Firebase, set all other 'playing' songs to 'completed'
     const updates: Record<string, any> = {};
@@ -272,9 +314,22 @@ export default function App() {
                     setHasPlayerError(true);
                   },
                   onStateChange: (event: any) => {
-                    // 0 = YT.PlayerState.ENDED
+                    // 0 = YT.PlayerState.ENDED, 1 = PLAYING, 2 = PAUSED
+                    if (event.data === 1) {
+                      setIsYtPlaying(true);
+                      if (playerRef.current) {
+                        try {
+                          setYtVolume(playerRef.current.getVolume() || 100);
+                          setIsYtMuted(playerRef.current.isMuted() || false);
+                        } catch (err) {}
+                      }
+                    } else if (event.data === 2) {
+                      setIsYtPlaying(false);
+                    }
                     if (event.data === 0) {
-                      handleSongEnded(queueId);
+                      if (playingQueueIdRef.current) {
+                        handleSongEnded(playingQueueIdRef.current);
+                      }
                     }
                   }
                 }
@@ -286,6 +341,105 @@ export default function App() {
         console.error("Failed to initialize YT Player: ", err);
       }
     }, 300);
+  };
+
+  // YouTube player control helper methods
+  const togglePlayPause = () => {
+    if (!playerRef.current) return;
+    try {
+      const state = playerRef.current.getPlayerState();
+      if (state === 1) { // playing
+        playerRef.current.pauseVideo();
+        setIsYtPlaying(false);
+      } else {
+        playerRef.current.playVideo();
+        setIsYtPlaying(true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const seekForward = () => {
+    if (!playerRef.current) return;
+    try {
+      const cur = playerRef.current.getCurrentTime() || 0;
+      playerRef.current.seekTo(cur + 10, true);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const seekBackward = () => {
+    if (!playerRef.current) return;
+    try {
+      const cur = playerRef.current.getCurrentTime() || 0;
+      playerRef.current.seekTo(Math.max(0, cur - 10), true);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleVolumeChange = (volume: number) => {
+    if (!playerRef.current) return;
+    try {
+      playerRef.current.setVolume(volume);
+      setYtVolume(volume);
+      if (volume > 0 && isYtMuted) {
+        playerRef.current.unMute();
+        setIsYtMuted(false);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const toggleMute = () => {
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.isMuted()) {
+        playerRef.current.unMute();
+        setIsYtMuted(false);
+      } else {
+        playerRef.current.mute();
+        setIsYtMuted(true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const restartCurrentSong = () => {
+    if (!playerRef.current) return;
+    try {
+      playerRef.current.seekTo(0, true);
+      playerRef.current.playVideo();
+      setIsYtPlaying(true);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!playerRef.current || !ytDuration) return;
+    try {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const width = rect.width;
+      const percentage = clickX / width;
+      const seekTime = percentage * ytDuration;
+      playerRef.current.seekTo(seekTime, true);
+      setYtCurrentTime(seekTime);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds) || seconds === undefined) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   // Close player manually
@@ -300,6 +454,7 @@ export default function App() {
     setPlayingSongTitle("ยังไม่ได้เลือกเพลง");
     setPlayingQueueId(null);
     setHasPlayerError(false);
+    setIsYtPlaying(false);
     playerRef.current = null;
   };
 
@@ -1383,6 +1538,116 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  {/* 📺 PREMIUM MEDIA CONTROLLER PANEL */}
+                  {playingVideoId && (
+                    <div className="bg-slate-950 border border-slate-800/80 p-4 rounded-2xl space-y-3 shadow-lg animate-fadeIn">
+                      
+                      {/* Timeline bar with time text */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                          <span>{formatTime(ytCurrentTime)}</span>
+                          <span className="text-amber-400/90">{formatTime(ytDuration)}</span>
+                        </div>
+                        
+                        {/* Interactive Progress Bar */}
+                        <div 
+                          onClick={handleProgressBarClick}
+                          className="h-2 bg-slate-800 hover:bg-slate-700 rounded-full cursor-pointer relative overflow-hidden group transition-all"
+                        >
+                          <div 
+                            className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-500 rounded-full absolute top-0 left-0"
+                            style={{ width: `${ytDuration ? (ytCurrentTime / ytDuration) * 100 : 0}%` }}
+                          />
+                          <div 
+                            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-lg border border-slate-300"
+                            style={{ left: `calc(${ytDuration ? (ytCurrentTime / ytDuration) * 100 : 0}% - 7px)` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Actions row */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        
+                        {/* Control buttons */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={seekBackward}
+                            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 cursor-pointer active:scale-95 transition-all"
+                            title="ย้อนหลัง 10 วินาที"
+                          >
+                            <SkipBack className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={togglePlayPause}
+                            className={`p-2 rounded-xl cursor-pointer active:scale-95 transition-all flex items-center justify-center ${
+                              isYtPlaying 
+                                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md shadow-amber-400/10' 
+                                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/10'
+                            }`}
+                            title={isYtPlaying ? "หยุดเพลงชั่วคราว" : "เล่นเพลงต่อ"}
+                          >
+                            {isYtPlaying ? (
+                              <Pause className="w-5 h-5 fill-slate-950" />
+                            ) : (
+                              <Play className="w-5 h-5 fill-slate-950 ml-0.5" />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={seekForward}
+                            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 cursor-pointer active:scale-95 transition-all"
+                            title="ข้ามไปข้างหน้า 10 วินาที"
+                          >
+                            <SkipForward className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={restartCurrentSong}
+                            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 cursor-pointer active:scale-95 transition-all"
+                            title="เริ่มเล่นใหม่ตั้งแต่ต้น"
+                          >
+                            <RotateCcw className="w-4 h-4 text-slate-400 hover:text-amber-400" />
+                          </button>
+                        </div>
+
+                        {/* Volume Adjuster */}
+                        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 min-w-[130px] max-w-[180px] flex-1">
+                          <button
+                            onClick={toggleMute}
+                            className="text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                            title={isYtMuted ? "เปิดเสียง" : "ปิดเสียง"}
+                          >
+                            {isYtMuted ? (
+                              <VolumeX className="w-4 h-4 text-rose-500 animate-pulse" />
+                            ) : (
+                              <Volume2 className="w-4 h-4 text-emerald-400" />
+                            )}
+                          </button>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={isYtMuted ? 0 : ytVolume}
+                            onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400 outline-none"
+                            title="ความดัง"
+                          />
+                          <span className="text-[10px] text-slate-400 font-mono w-6 text-right">
+                            {isYtMuted ? '0' : ytVolume}%
+                          </span>
+                        </div>
+
+                        {/* Status badge */}
+                        <div className="text-[10px] text-slate-400 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800 flex items-center gap-1.5 font-medium shrink-0">
+                          <span className={`w-1.5 h-1.5 rounded-full ${isYtPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                          <span>{isYtPlaying ? 'กำลังเล่น' : 'หยุด'}</span>
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
 
                   {/* Copy Link / Action Fallbacks */}
                   {playingVideoId && (
